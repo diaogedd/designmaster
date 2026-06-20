@@ -12,6 +12,13 @@ interface LoginSession {
   sender: Electron.WebContents
 }
 
+interface LoginCallbackPayload {
+  requestId: string
+  success: boolean
+  token?: string
+  error?: string
+}
+
 const sessions = new Map<string, LoginSession>()
 
 function buildCallbackHtml(message: string): string {
@@ -55,6 +62,10 @@ export function registerLoginHandlers(): void {
           }
 
           const token = reqUrl.searchParams.get('token')
+          const accessToken = reqUrl.searchParams.get('access_token')
+          const idToken = reqUrl.searchParams.get('id_token')
+          const refreshToken = reqUrl.searchParams.get('refresh_token')
+          const callbackToken = token || accessToken || idToken
 
           const session = sessions.get(requestId)
           if (!session) {
@@ -71,9 +82,24 @@ export function registerLoginHandlers(): void {
             return
           }
 
-          session.resolved = true
- 
-          if (!token) {
+          if (reqUrl.searchParams.get('error')) {
+            session.resolved = true
+            const payload: LoginCallbackPayload = {
+              requestId,
+              success: false,
+              error:
+                reqUrl.searchParams.get('error_description') || reqUrl.searchParams.get('error') ||
+                'OAuth login failed'
+            }
+            sender.send('login:callback', payload)
+            res.statusCode = 400
+            res.setHeader('Content-Type', 'text/html; charset=utf-8')
+            res.end(buildCallbackHtml('Login failed. You can close this window.'))
+            cleanup(requestId)
+            return
+          }
+
+          if (!callbackToken) {
             sender.send('login:callback', { requestId, success: false, error: 'No token received' })
             res.statusCode = 400
             res.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -84,10 +110,14 @@ export function registerLoginHandlers(): void {
 
           // Store token securely in main process config (never exposed to renderer)
           const config = readConfig()
-          config['loginToken'] = token
+          config['loginToken'] = callbackToken
+          if (accessToken && accessToken !== callbackToken) config['loginAccessToken'] = accessToken
+          if (idToken && idToken !== callbackToken) config['loginIdToken'] = idToken
+          if (refreshToken) config['loginRefreshToken'] = refreshToken
           writeConfig(config)
 
-          sender.send('login:callback', { requestId, success: true })
+          session.resolved = true
+          sender.send('login:callback', { requestId, success: true, token: callbackToken })
 
           res.statusCode = 200
           res.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -148,7 +178,10 @@ export function registerLoginHandlers(): void {
   ipcMain.handle('login:check', async () => {
     const config = readConfig()
     const token = config['loginToken']
-    return { hasToken: typeof token === 'string' && token.length > 0 }
+    return {
+      hasToken: typeof token === 'string' && token.length > 0,
+      token: typeof token === 'string' && token.length > 0 ? token : undefined
+    }
   })
 }
 

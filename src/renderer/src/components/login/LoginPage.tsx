@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 interface LoginCallbackPayload {
   requestId: string
   success: boolean
+  token?: string
   error?: string
 }
 
@@ -25,6 +26,7 @@ export function LoginPage(): React.JSX.Element {
 
       if (payload.success) {
         setLogin(true)
+        setLoading(false)
         toast.success(t('login.success', { defaultValue: 'Login successful' }))
       } else {
         toast.error(payload.error || t('login.callbackFailed', { defaultValue: 'Login failed' }))
