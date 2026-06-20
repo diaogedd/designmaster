@@ -1,0 +1,361 @@
+import cron from 'node-cron'
+import { BrowserWindow } from 'electron'
+import { safeSendToWindow } from '../window-ipc'
+import { getDb } from '../db/database'
+import { runCronAgentInBackground } from './cron-agent-background'
+
+// ── Types ────────────────────────────────────────────────────────
+
+export interface CronJobRecord {
+  id: string
+  name: string
+
+  schedule_kind: 'at' | 'every' | 'cron'
+  schedule_at: number | null
+  schedule_every: number | null
+  schedule_expr: string | null
+  schedule_tz: string
+
+  prompt: string
+  agent_id: string | null
+  model: string | null
+  working_folder: string | null
+  ssh_connection_id: string | null
+  session_id: string | null
+  source_session_title: string | null
+  source_project_id: string | null
+  source_project_name: string | null
+  source_provider_id: string | null
+
+  delivery_mode: 'desktop' | 'session' | 'none'
+  delivery_target: string | null
+
+  plugin_id: string | null
+  plugin_chat_id: string | null
+
+  enabled: number
+  delete_after_run: number
+  max_iterations: number
+  deleted_at: number | null
+
+  last_fired_at: number | null
+  fire_count: number
+  created_at: number
+  updated_at: number
+}
+
+export interface CronRunRecord {
+  id: string
+  job_id: string
+  started_at: number
+  finished_at: number | null
+  status: 'running' | 'success' | 'error' | 'aborted'
+  tool_call_count: number
+  output_summary: string | null
+  error: string | null
+  scheduled_for: number | null
+  job_name_snapshot: string | null
+  prompt_snapshot: string | null
+  source_session_id_snapshot: string | null
+  source_session_title_snapshot: string | null
+  source_project_id_snapshot: string | null
+  source_project_name_snapshot: string | null
+  source_provider_id_snapshot: string | null
+  model_snapshot: string | null
+  working_folder_snapshot: string | null
+  delivery_mode_snapshot: string | null
+  delivery_target_snapshot: string | null
+}
+
+// ── Scheduled Handle (unified abstraction) ───────────────────────
+
+interface ScheduledHandle {
+  stop(): void
+}
+
+const scheduledHandles = new Map<string, ScheduledHandle>()
+
+// ── Concurrency ──────────────────────────────────────────────────
+
+let maxConcurrentRuns = 2
+const activeRunJobIds = new Set<string>()
+/** Jobs with delete_after_run that are waiting for the agent run to finish before DB deletion */
+const pendingDeleteAfterRun = new Set<string>()
+
+export function setMaxConcurrentRuns(n: number): void {
+  maxConcurrentRuns = Math.max(1, n)
+}
+
+export function isRunning(jobId: string): boolean {
+  return activeRunJobIds.has(jobId)
+}
+
+export function markRunning(jobId: string): boolean {
+  if (activeRunJobIds.has(jobId)) return false
+  if (activeRunJobIds.size >= maxConcurrentRuns) {
+    console.warn(
+      `[CronScheduler] Concurrency limit reached (${maxConcurrentRuns}), skipping job ${jobId}`
+    )
+    return false
+  }
+  activeRunJobIds.add(jobId)
+  return true
+}
+
+export function markFinished(jobId: string): void {
+  activeRunJobIds.delete(jobId)
+
+  // Deferred delete_after_run: now that the agent run is done, soft-delete the job
+  if (pendingDeleteAfterRun.has(jobId)) {
+    pendingDeleteAfterRun.delete(jobId)
+    try {
+      const db = getDb()
+      const now = Date.now()
+      db.prepare(
+        'UPDATE cron_jobs SET enabled = 0, deleted_at = ?, updated_at = ? WHERE id = ?'
+      ).run(now, now, jobId)
+      sendToRenderer('cron:job-removed', { jobId, reason: 'delete_after_run' })
+      console.log(`[CronScheduler] Deferred delete_after_run: soft-deleted job ${jobId}`)
+    } catch (err) {
+      console.error(`[CronScheduler] Failed to soft-delete job ${jobId} after run:`, err)
+    }
+  }
+}
+
+// ── Renderer communication ───────────────────────────────────────
+
+function sendToRenderer(channel: string, data: unknown): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win) {
+    safeSendToWindow(win, channel, data)
+  }
+}
+
+// ── Job fired handler ────────────────────────────────────────────
+
+function onJobFired(job: CronJobRecord): void {
+  // Concurrency guard — prevent firing if this job is already running or limit reached
+  if (!markRunning(job.id)) {
+    console.warn(`[CronScheduler] Job ${job.id} skipped (already running or concurrency limit)`)
+    return
+  }
+
+  try {
+    const db = getDb()
+
+    // Update fire stats
+    db.prepare(
+      'UPDATE cron_jobs SET last_fired_at = ?, fire_count = fire_count + 1 WHERE id = ?'
+    ).run(Date.now(), job.id)
+
+    const firedAt = Date.now()
+
+    // Forward to renderer for UI updates only.
+    sendToRenderer('cron:fired', {
+      jobId: job.id,
+      name: job.name,
+      prompt: job.prompt,
+      agentId: job.agent_id,
+      model: job.model,
+      sourceProviderId: job.source_provider_id,
+      workingFolder: job.working_folder,
+      sshConnectionId: job.ssh_connection_id,
+      sessionId: job.session_id,
+      firedAt,
+      deliveryMode: job.delivery_mode,
+      deliveryTarget: job.delivery_target,
+      maxIterations: job.max_iterations,
+      pluginId: job.plugin_id,
+      pluginChatId: job.plugin_chat_id
+    })
+
+    runCronAgentInBackground(
+      {
+        jobId: job.id,
+        name: job.name,
+        sessionId: job.session_id,
+        prompt: job.prompt,
+        agentId: job.agent_id,
+        model: job.model,
+        sourceProviderId: job.source_provider_id,
+        workingFolder: job.working_folder,
+        sshConnectionId: job.ssh_connection_id,
+        firedAt,
+        deliveryMode: job.delivery_mode,
+        deliveryTarget: job.delivery_target,
+        maxIterations: job.max_iterations,
+        pluginId: job.plugin_id,
+        pluginChatId: job.plugin_chat_id,
+        getScheduledState: () => scheduledHandles.has(job.id)
+      },
+      () => {
+        markFinished(job.id)
+      }
+    )
+
+    // Handle delete_after_run: stop the schedule handle now (prevent re-fire),
+    // but defer DB deletion + UI removal until the agent run finishes (cron:run-finished).
+    // This keeps the job visible in the UI during execution.
+    if (job.delete_after_run) {
+      const handle = scheduledHandles.get(job.id)
+      if (handle) {
+        handle.stop()
+        scheduledHandles.delete(job.id)
+      }
+      pendingDeleteAfterRun.add(job.id)
+    }
+  } catch (err) {
+    console.error('[CronScheduler] Job fire error:', err)
+    markFinished(job.id)
+    sendToRenderer('cron:fired', {
+      jobId: job.id,
+      error: err instanceof Error ? err.message : String(err)
+    })
+  }
+}
+
+// ── Schedule a job ───────────────────────────────────────────────
+
+export function scheduleJob(record: CronJobRecord): boolean {
+  // Stop any existing handle
+  const existing = scheduledHandles.get(record.id)
+  if (existing) {
+    existing.stop()
+    scheduledHandles.delete(record.id)
+  }
+
+  const kind = record.schedule_kind
+
+  if (kind === 'at') {
+    const targetMs = record.schedule_at
+    if (!targetMs) return false
+    const delay = targetMs - Date.now()
+    if (delay <= -30_000) {
+      // More than 30s in the past — skip instead of firing immediately
+      console.warn(`[CronScheduler] Job ${record.id} schedule_at is in the past, skipping`)
+      return false
+    }
+    if (delay <= 0) {
+      // Within 30s tolerance — fire immediately (e.g. app just started)
+      onJobFired(record)
+      return true
+    }
+    const timer = setTimeout(() => {
+      scheduledHandles.delete(record.id)
+      onJobFired(record)
+    }, delay)
+    scheduledHandles.set(record.id, { stop: () => clearTimeout(timer) })
+    return true
+  }
+
+  if (kind === 'every') {
+    const intervalMs = record.schedule_every
+    if (!intervalMs || intervalMs < 1000) return false
+
+    const anchor = record.last_fired_at ?? record.updated_at ?? record.created_at
+    const now = Date.now()
+    const elapsed = Math.max(0, now - anchor)
+    const initialDelay = intervalMs - (elapsed % intervalMs || intervalMs)
+
+    let interval: NodeJS.Timeout | null = null
+    const timeout = setTimeout(() => {
+      onJobFired(record)
+      interval = setInterval(() => {
+        onJobFired(record)
+      }, intervalMs)
+    }, initialDelay)
+
+    scheduledHandles.set(record.id, {
+      stop: () => {
+        clearTimeout(timeout)
+        if (interval) clearInterval(interval)
+      }
+    })
+    return true
+  }
+
+  if (kind === 'cron') {
+    const expr = record.schedule_expr
+    if (!expr || !cron.validate(expr)) return false
+    const task = cron.schedule(
+      expr,
+      () => {
+        onJobFired(record)
+      },
+      { scheduled: true, timezone: record.schedule_tz || 'UTC' }
+    )
+    scheduledHandles.set(record.id, { stop: () => task.stop() })
+    return true
+  }
+
+  return false
+}
+
+// ── Cancel / unschedule ──────────────────────────────────────────
+
+export function cancelJob(id: string): boolean {
+  const handle = scheduledHandles.get(id)
+  if (!handle) return false
+  handle.stop()
+  scheduledHandles.delete(id)
+  return true
+}
+
+// ── Load persisted jobs on startup ───────────────────────────────
+
+export function loadPersistedJobs(): void {
+  try {
+    const db = getDb()
+
+    // Runs do not survive app restarts, so any unfinished background run is stale.
+    const now = Date.now()
+    db.prepare(
+      `UPDATE cron_runs
+          SET finished_at = COALESCE(finished_at, ?),
+              status = 'aborted',
+              error = COALESCE(error, 'Cron run interrupted before completion')
+        WHERE status = 'running' AND finished_at IS NULL`
+    ).run(now)
+
+    // Clean up expired 'at' jobs that are in the past
+    db.prepare(
+      "UPDATE cron_jobs SET enabled = 0, deleted_at = COALESCE(deleted_at, ?), updated_at = ? WHERE schedule_kind = 'at' AND schedule_at < ? AND delete_after_run = 1 AND deleted_at IS NULL"
+    ).run(now, now, now)
+
+    const rows = db
+      .prepare('SELECT * FROM cron_jobs WHERE enabled = 1 AND deleted_at IS NULL')
+      .all() as CronJobRecord[]
+    let loaded = 0
+    for (const row of rows) {
+      if (scheduleJob(row)) {
+        loaded++
+      } else {
+        console.warn('[CronScheduler] Failed to schedule job', row.id, row.schedule_kind)
+      }
+    }
+    console.log(`[CronScheduler] Loaded ${loaded}/${rows.length} persisted cron jobs`)
+  } catch (err) {
+    console.error('[CronScheduler] Failed to load persisted jobs:', err)
+  }
+}
+
+// ── Cancel all (shutdown) ────────────────────────────────────────
+
+export function cancelAllJobs(): void {
+  for (const [, handle] of scheduledHandles) {
+    handle.stop()
+  }
+  scheduledHandles.clear()
+  activeRunJobIds.clear()
+  pendingDeleteAfterRun.clear()
+}
+
+// ── Query helpers ────────────────────────────────────────────────
+
+export function getScheduledJobIds(): string[] {
+  return Array.from(scheduledHandles.keys())
+}
+
+export function getActiveRunJobIds(): string[] {
+  return Array.from(activeRunJobIds)
+}

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "demo_extension",
+  "name": "Demo Extension",
+  "version": "0.1.0",
+  "description": "Example OpenCowork extension with HTTP, JS, table UI, and sandbox HTML UI.",
+  "entry": "index.js",
+  "permissions": {
+    "network": ["https://jsonplaceholder.typicode.com"]
+  },
+  "tools": [
+    {
+      "name": "get_post",
+      "description": "Fetch a demo post by id with a declarative HTTP GET tool.",
+      "kind": "http",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Post id, for example 1"
+          }
+        },
+        "required": ["id"]
+      },
+      "http": {
+        "method": "GET",
+        "url": "https://jsonplaceholder.typicode.com/posts/{{input.id}}"
+      }
+    },
+    {
+      "name": "show_table",
+      "description": "Return a table rendered by OpenCowork's built-in extension UI.",
+      "kind": "js",
+      "handler": "showTable",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "show_html",
+      "description": "Render a custom sandbox HTML response component.",
+      "kind": "js",
+      "handler": "showHtml",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Optional card title"
+          }
+        }
+      }
+    }
+  ],
+  "renderers": [
+    {
+      "name": "summary_card",
+      "type": "html",
+      "entry": "renderer.html"
+    }
+  ]
+}
