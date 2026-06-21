@@ -404,7 +404,7 @@ export function TitleBar({
 
         <PendingInboxPopover />
 
-        {showProjectToolGroup && (
+        {/* {showProjectToolGroup && (
           <div className="titlebar-no-drag flex items-center gap-1">
             {showRuntimeStatusToggle && (
               <Tooltip>
@@ -510,7 +510,7 @@ export function TitleBar({
               </Tooltip>
             )}
           </div>
-        )}
+        )} */}
 
         <Tooltip>
           <TooltipTrigger asChild>

@@ -1,5 +1,5 @@
-appId: com.opencowork.app
-productName: FuckDogAI
+appId: com.DesignMaster.app
+productName: DesignMaster
 directories:
   buildResources: build
 afterPack: build/after-sign-mac.cjs
@@ -108,9 +108,9 @@ asarUnpack:
   - node_modules/@jitsi/robotjs/**
   - node_modules/node-gyp-build/**
 win:
-  executableName: OpenCoWork
+  executableName: DesignMaster
   icon: build/icon.ico
-  legalTrademarks: OpenCoWork
+  legalTrademarks: DesignMaster
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -127,7 +127,7 @@ mac:
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    - NSLocalNetworkUsageDescription: OpenCoWork needs local network access to connect to SSH hosts and local services on your network.
+    - NSLocalNetworkUsageDescription: DesignMaster needs local network access to connect to SSH hosts and local services on your network.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}
@@ -144,7 +144,7 @@ npmRebuild: false
 publish:
   provider: github
   owner: AIDotNet
-  repo: OpenCowork
+  repo: DesignMaster
   releaseType: release
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

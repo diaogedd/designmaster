@@ -1,5 +1,5 @@
 {
-  "name": "open-cowork",
+  "name": "DesignMaster",
   "version": "0.9.118",
   "description": "Open-source desktop platform for multi-agent AI collaboration with local tools and workplace integration",
   "main": "./out/main/index.js",

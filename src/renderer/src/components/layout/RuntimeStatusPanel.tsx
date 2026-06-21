@@ -377,7 +377,8 @@ export function RuntimeStatusPanel({
     [activeTeam?.tasks]
   )
   const tasks = sessionTasks.length > 0 ? sessionTasks : teamTasks
-  const visible = Boolean(resolvedSessionId && runtimeStatusPanelOpen && !rightPanelOpen)
+  // const visible = Boolean(resolvedSessionId && runtimeStatusPanelOpen && !rightPanelOpen)
+  const visible = false
 
   React.useEffect(() => {
     initTerminals()

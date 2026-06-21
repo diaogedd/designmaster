@@ -3,7 +3,7 @@ import { URL } from 'url'
 import { readConfig, writeConfig } from './secure-key-store'
 
 const client_id = 'DesignMasterMCP_NativeApp'
-const LOGIN_URL = `http://47.242.151.54:8080/connect/authorize?client_id=${client_id}&response_type=code&scope=openid`
+const LOGIN_URL = `https://apextares.cn/connect/authorize?response_type=code&scope=openid%20profile`
 const CUSTOM_SCHEME = 'opencowork'
 const CUSTOM_CALLBACK_PREFIX = `${CUSTOM_SCHEME}://auth/callback`
 
@@ -108,9 +108,10 @@ export function registerLoginHandlers(): void {
     sessions.set(requestId, { resolved: false, sender: event.sender })
     activeRequestId = requestId
 
-    const redirectUri = encodeURIComponent(`${CUSTOM_CALLBACK_PREFIX}?code=${requestId}`)
-    const loginUrl = `${LOGIN_URL}?redirect_uri=${redirectUri}&state=${requestId}`
-    void shell.openExternal(loginUrl)
+    const redirectUri = encodeURIComponent(CUSTOM_CALLBACK_PREFIX)
+    const loginUrl = `${LOGIN_URL}&client_id=${client_id}&redirect_uri=${redirectUri}`
+    console.log('loginUrl',loginUrl)
+    // void shell.openExternal(loginUrl)
 
     return { requestId, redirectUri }
   })
