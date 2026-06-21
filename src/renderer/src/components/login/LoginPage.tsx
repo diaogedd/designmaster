@@ -1,15 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@renderer/components/ui/button'
-import { useSettingsStore } from '@renderer/stores/settings-store'
-import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@renderer/components/ui/button'
+import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 
 interface LoginCallbackPayload {
   requestId: string
   success: boolean
-  token?: string
+  code?: string
   error?: string
 }
 
@@ -27,7 +27,11 @@ export function LoginPage(): React.JSX.Element {
       if (payload.success) {
         setLogin(true)
         setLoading(false)
-        toast.success(t('login.success', { defaultValue: 'Login successful' }))
+        toast.success(
+          t('login.success', {
+            defaultValue: payload.code ? 'Login code received' : 'Login successful'
+          })
+        )
       } else {
         toast.error(payload.error || t('login.callbackFailed', { defaultValue: 'Login failed' }))
         setLoading(false)
@@ -44,12 +48,10 @@ export function LoginPage(): React.JSX.Element {
     try {
       const result = (await ipcClient.invoke('login:start')) as {
         requestId: string
-        port: number
         redirectUri: string
       }
       currentRequestIdRef.current = result.requestId
-      // Main process opened the external login page automatically
-      // The local HTTP server is now listening for the callback at result.redirectUri
+      toast.info(t('login.waiting', { defaultValue: 'Waiting for login...' }))
     } catch {
       toast.error(t('login.openFailed', { defaultValue: 'Failed to start login' }))
       setLoading(false)
@@ -68,12 +70,7 @@ export function LoginPage(): React.JSX.Element {
           </p>
         </div>
 
-        <Button
-          className="w-full"
-          size="lg"
-          onClick={() => void handleLogin()}
-          disabled={loading}
-        >
+        <Button className="w-full" size="lg" onClick={() => void handleLogin()} disabled={loading}>
           {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
           {loading
             ? t('login.waiting', { defaultValue: 'Waiting for login...' })

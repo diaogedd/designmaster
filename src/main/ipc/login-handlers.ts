@@ -1,173 +1,118 @@
-import { ipcMain, shell } from 'electron'
-import * as http from 'http'
+import { app, ipcMain, shell } from 'electron'
 import { URL } from 'url'
 import { readConfig, writeConfig } from './secure-key-store'
 
-const LOGIN_URL = 'http://47.242.151.54:8080/Account/login'
-
-interface LoginSession {
-  server: http.Server
-  port: number
-  resolved: boolean
-  sender: Electron.WebContents
-}
+const client_id = 'DesignMasterMCP_NativeApp'
+const LOGIN_URL = `http://47.242.151.54:8080/connect/authorize?client_id=${client_id}&response_type=code&scope=openid`
+const CUSTOM_SCHEME = 'opencowork'
+const CUSTOM_CALLBACK_PREFIX = `${CUSTOM_SCHEME}://auth/callback`
 
 interface LoginCallbackPayload {
   requestId: string
   success: boolean
-  token?: string
+  code?: string
   error?: string
 }
 
-const sessions = new Map<string, LoginSession>()
+const sessions = new Map<
+  string,
+  {
+    resolved: boolean
+    sender: Electron.WebContents
+  }
+>()
+let activeRequestId: string | null = null
 
-function buildCallbackHtml(message: string): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Login Complete</title>
-  <style>
-    body { font-family: system-ui, sans-serif; padding: 32px; color: #111; }
-    .card { max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #ddd; border-radius: 12px; }
-    h1 { font-size: 18px; margin: 0 0 8px; }
-    p { margin: 0; color: #555; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Login Complete</h1>
-    <p>${message}</p>
-  </div>
-</body>
-</html>`
+function ensureProtocolClient(): void {
+  try {
+    if (!app.isDefaultProtocolClient(CUSTOM_SCHEME)) {
+      app.setAsDefaultProtocolClient(CUSTOM_SCHEME)
+    }
+  } catch (err) {
+    console.warn('[Login] Failed to register protocol client:', err)
+  }
+}
+
+function emitCallbackFromUrl(rawUrl: string): void {
+  try {
+    const callbackUrl = new URL(rawUrl)
+    if (!rawUrl.startsWith(CUSTOM_CALLBACK_PREFIX)) return
+
+    const requestId =
+      callbackUrl.searchParams.get('state') ||
+      callbackUrl.searchParams.get('requestId') ||
+      activeRequestId
+    if (!requestId) return
+
+    const session = sessions.get(requestId)
+    if (!session || session.resolved) return
+
+    const error = callbackUrl.searchParams.get('error')
+    if (error) {
+      session.resolved = true
+      session.sender.send('login:callback', {
+        requestId,
+        success: false,
+        error: callbackUrl.searchParams.get('error_description') || error || 'OAuth login failed'
+      } satisfies LoginCallbackPayload)
+      cleanup(requestId)
+      return
+    }
+
+    const code = callbackUrl.searchParams.get('code')
+    if (!code) {
+      session.sender.send('login:callback', {
+        requestId,
+        success: false,
+        error: 'No code received'
+      } satisfies LoginCallbackPayload)
+      cleanup(requestId)
+      return
+    }
+
+    const config = readConfig()
+    config['loginAuthCode'] = code
+    config['loginAuthCallbackUrl'] = rawUrl
+    writeConfig(config)
+
+    session.resolved = true
+    session.sender.send('login:callback', {
+      requestId,
+      success: true,
+      code
+    } satisfies LoginCallbackPayload)
+    cleanup(requestId)
+  } catch (err) {
+    console.warn('[Login] Failed to handle auth callback:', err)
+  }
 }
 
 export function registerLoginHandlers(): void {
+  ensureProtocolClient()
+
+  app.on('open-url', (_event, rawUrl) => {
+    console.log('open-url', rawUrl)
+    emitCallbackFromUrl(rawUrl)
+  })
+
+  app.on('second-instance', (_event, commandLine) => {
+    const callbackArg = commandLine.find((arg) => arg.startsWith(`${CUSTOM_SCHEME}://`))
+    console.log('second-instance', callbackArg)
+    if (callbackArg) {
+      emitCallbackFromUrl(callbackArg)
+    }
+  })
+
   ipcMain.handle('login:start', async (event) => {
     const requestId = `login-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    const sender = event.sender
+    sessions.set(requestId, { resolved: false, sender: event.sender })
+    activeRequestId = requestId
 
-    return new Promise<{ requestId: string; port: number; redirectUri: string }>((resolve, reject) => {
-      const server = http.createServer((req, res) => {
-        try {
-          const reqUrl = new URL(req.url || '', 'http://localhost')
-          const callbackPath = '/login/callback'
+    const redirectUri = encodeURIComponent(`${CUSTOM_CALLBACK_PREFIX}?code=${requestId}`)
+    const loginUrl = `${LOGIN_URL}?redirect_uri=${redirectUri}&state=${requestId}`
+    void shell.openExternal(loginUrl)
 
-          if (reqUrl.pathname !== callbackPath) {
-            res.statusCode = 404
-            res.end('Not Found')
-            return
-          }
-
-          const token = reqUrl.searchParams.get('token')
-          const accessToken = reqUrl.searchParams.get('access_token')
-          const idToken = reqUrl.searchParams.get('id_token')
-          const refreshToken = reqUrl.searchParams.get('refresh_token')
-          const callbackToken = token || accessToken || idToken
-
-          const session = sessions.get(requestId)
-          if (!session) {
-            res.statusCode = 400
-            res.setHeader('Content-Type', 'text/html; charset=utf-8')
-            res.end(buildCallbackHtml('Session expired. You can close this window.'))
-            return
-          }
-
-          if (session.resolved) {
-            res.statusCode = 400
-            res.setHeader('Content-Type', 'text/html; charset=utf-8')
-            res.end(buildCallbackHtml('Login already processed. You can close this window.'))
-            return
-          }
-
-          if (reqUrl.searchParams.get('error')) {
-            session.resolved = true
-            const payload: LoginCallbackPayload = {
-              requestId,
-              success: false,
-              error:
-                reqUrl.searchParams.get('error_description') || reqUrl.searchParams.get('error') ||
-                'OAuth login failed'
-            }
-            sender.send('login:callback', payload)
-            res.statusCode = 400
-            res.setHeader('Content-Type', 'text/html; charset=utf-8')
-            res.end(buildCallbackHtml('Login failed. You can close this window.'))
-            cleanup(requestId)
-            return
-          }
-
-          if (!callbackToken) {
-            sender.send('login:callback', { requestId, success: false, error: 'No token received' })
-            res.statusCode = 400
-            res.setHeader('Content-Type', 'text/html; charset=utf-8')
-            res.end(buildCallbackHtml('No token received. You can close this window.'))
-            cleanup(requestId)
-            return
-          }
-
-          // Store token securely in main process config (never exposed to renderer)
-          const config = readConfig()
-          config['loginToken'] = callbackToken
-          if (accessToken && accessToken !== callbackToken) config['loginAccessToken'] = accessToken
-          if (idToken && idToken !== callbackToken) config['loginIdToken'] = idToken
-          if (refreshToken) config['loginRefreshToken'] = refreshToken
-          writeConfig(config)
-
-          session.resolved = true
-          sender.send('login:callback', { requestId, success: true, token: callbackToken })
-
-          res.statusCode = 200
-          res.setHeader('Content-Type', 'text/html; charset=utf-8')
-          res.end(
-            buildCallbackHtml(
-              'Login succeeded. Token has been stored. You can close this window and return to the application.'
-            )
-          )
-          cleanup(requestId)
-        } catch (err) {
-          const session = sessions.get(requestId)
-          if (session) {
-            session.sender.send('login:callback', {
-              requestId,
-              success: false,
-              error: err instanceof Error ? err.message : String(err)
-            })
-          }
-          res.statusCode = 500
-          res.setHeader('Content-Type', 'text/html; charset=utf-8')
-          res.end(buildCallbackHtml('Login failed. You can close this window.'))
-          cleanup(requestId)
-        }
-      })
-
-      server.on('error', (err) => {
-        reject(err)
-      })
-
-      server.listen(0, '127.0.0.1', () => {
-        const address = server.address()
-        const actualPort = typeof address === 'object' && address ? address.port : 0
-
-        sessions.set(requestId, {
-          server,
-          port: actualPort,
-          resolved: false,
-          sender
-        })
-
-        const redirectUri = `http://127.0.0.1:${actualPort}/login/callback`
-
-        // Open the external login page with the redirect_uri so the server
-        // knows where to send the token back after authentication
-        const loginUrl = `${LOGIN_URL}?redirect_uri=${encodeURIComponent(redirectUri)}`
-        void shell.openExternal(loginUrl)
-
-        resolve({ requestId, port: actualPort, redirectUri })
-      })
-    })
+    return { requestId, redirectUri }
   })
 
   ipcMain.handle('login:stop', async (_event, args: { requestId: string }) => {
@@ -186,12 +131,7 @@ export function registerLoginHandlers(): void {
 }
 
 function cleanup(requestId: string): void {
-  const session = sessions.get(requestId)
-  if (!session) return
-  try {
-    session.server.close()
-  } catch {
-    // ignore
-  }
+  if (!sessions.has(requestId)) return
   sessions.delete(requestId)
+  if (activeRequestId === requestId) activeRequestId = null
 }
