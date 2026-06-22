@@ -278,6 +278,7 @@
     },
     "errors": {
       "unhandledTitle": "未处理的错误"
-    }
+    },
+    "recoveredReducedMemoryMode": "渲染器已在降内存模式下恢复"
   }
 }

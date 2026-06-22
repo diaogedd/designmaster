@@ -278,6 +278,7 @@
     },
     "errors": {
       "unhandledTitle": "Unhandled Error"
-    }
+    },
+    "recoveredReducedMemoryMode": "Renderer recovered in reduced-memory mode"
   }
 }

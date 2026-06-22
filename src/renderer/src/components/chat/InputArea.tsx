@@ -2345,8 +2345,8 @@ export function InputArea({
 
       if (!fastProvider) {
         console.error('[Optimizer] No enabled provider found')
-        toast.error('No AI provider available', {
-          description: 'Please configure an AI provider in Settings'
+        toast.error(t('noProviderAvailable'), {
+          description: t('noProviderAvailableDesc')
         })
         setIsOptimizing(false)
         return
@@ -2361,7 +2361,7 @@ export function InputArea({
 
       if (!fastModel) {
         console.error('[Optimizer] No enabled model found')
-        toast.error('No AI model available', { description: 'Please enable a model in Settings' })
+        toast.error(t('noModelAvailable'), { description: t('noModelAvailableDesc') })
         setIsOptimizing(false)
         return
       }

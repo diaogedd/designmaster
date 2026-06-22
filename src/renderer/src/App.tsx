@@ -312,7 +312,7 @@ function App(): React.JSX.Element {
         setWorkerBootError(message)
       }
     })()
-  }, [detachedSessionId, sessionWindowView, teamWorkerParams])
+  }, [detachedSessionId, sessionWindowView, teamWorkerParams, t])
 
   // Load sessions and plans from SQLite on startup
   useEffect(() => {
@@ -375,7 +375,7 @@ function App(): React.JSX.Element {
           rightPanelOpen: false
         })
         await useChatStore.getState().recoverFromRendererOom(recoverySessionId)
-        toast.warning('Renderer recovered in reduced-memory mode')
+        toast.warning(t('app.recoveredReducedMemoryMode'))
       }
     })()
     window.electron.ipcRenderer
@@ -388,7 +388,7 @@ function App(): React.JSX.Element {
       .catch(() => {
         // Ignore — main process may not have a stored key yet
       })
-  }, [detachedSessionId, sessionWindowView, teamWorkerParams])
+  }, [detachedSessionId, sessionWindowView, teamWorkerParams, t])
 
   useEffect(() => {
     if (sessionWindowView) return

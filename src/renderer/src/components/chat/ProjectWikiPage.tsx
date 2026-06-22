@@ -273,10 +273,10 @@ export function ProjectWikiPage(): React.JSX.Element {
       )
       toast.success(
         mode === 'incremental'
-          ? 'Wiki incrementally updated'
+          ? t('wikiIncrementalUpdated')
           : mode === 'full'
-            ? 'Wiki generated (old structure auto-upgraded to tree)'
-            : 'Wiki regenerated'
+            ? t('wikiGeneratedUpgradedToTree')
+            : t('wikiRegenerated')
       )
       await loadData()
     } catch (error) {
@@ -303,7 +303,7 @@ export function ProjectWikiPage(): React.JSX.Element {
     cancelWikiGeneration()
     setRunningAction(null)
     setGenerationProgress((current) =>
-      current ? { ...current, stage: 'cancelled', message: 'Wiki generation cancelled' } : current
+      current ? { ...current, stage: 'cancelled', message: t('wikiGenerationCancelled') } : current
     )
     toast.info('Wiki generation cancelled')
   }
