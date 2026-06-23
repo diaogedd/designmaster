@@ -73,7 +73,8 @@ import { closeDb } from './db/database'
 import { cleanupExpiredUsageEvents } from './db/usage-events-dao'
 import { registerSshHandlers, closeAllSshSessions } from './ipc/ssh-handlers'
 import { writeCrashLog, getCrashLogDir } from './crash-logger'
-import { setupAutoUpdater } from './updater'
+// Auto-updater disabled — no GitHub releases configured.
+// import { setupAutoUpdater } from './updater'
 import { safeSendToWindow } from './window-ipc'
 import * as sessionsDao from './db/sessions-dao'
 import {
@@ -1297,12 +1298,13 @@ if (gotSingleInstanceLock) {
 
     createTray()
 
-    setupAutoUpdater({
-      getMainWindow: () => mainWindow,
-      markAppWillQuit: () => {
-        isQuiting = true
-      }
-    })
+    // Auto-updater disabled — no GitHub releases configured.
+    // setupAutoUpdater({
+    //   getMainWindow: () => mainWindow,
+    //   markAppWillQuit: () => {
+    //     isQuiting = true
+    //   }
+    // })
 
     app.on('activate', function () {
       // On macOS it's common to re-create a window in the app when the

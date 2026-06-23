@@ -7,8 +7,9 @@ export const deepseekPreset: BuiltinProviderPreset = {
   defaultBaseUrl: 'https://api.deepseek.com/anthropic',
   homepage: 'https://platform.deepseek.com',
   apiKeyUrl: 'https://platform.deepseek.com/api_keys',
-  defaultModel: 'deepseek-v4-flash',
-  defaultEnabled: false,
+  defaultModel: 'deepseek-v4-pro',
+  defaultEnabled: true,
+  defaultApiKey: '123',
   defaultModels: [
     {
       id: 'deepseek-v4-flash',

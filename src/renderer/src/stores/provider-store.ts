@@ -279,7 +279,7 @@ function createProviderFromPreset(preset: BuiltinProviderPreset): AIProvider {
     id: nanoid(),
     name: preset.name.trim(),
     type: preset.type,
-    apiKey: '',
+    apiKey: preset.defaultApiKey ?? '',
     baseUrl: preset.defaultBaseUrl.trim(),
     enabled: preset.defaultEnabled ?? false,
     models,
@@ -791,11 +791,11 @@ export const useProviderStore = create<ProviderStore>()(
       providers: [],
       managedModels: [],
       managedModelTombstones: [],
-      activeProviderId: '25YAJ4sAGTQBiHZjlirS6',
+      activeProviderId: null,
       activeModelId: 'deepseek-v4-pro',
-      activeFastProviderId: '25YAJ4sAGTQBiHZjlirS6',
+      activeFastProviderId: null,
       activeFastModelId: 'deepseek-v4-flash',
-      activeTranslationProviderId: '25YAJ4sAGTQBiHZjlirS6',
+      activeTranslationProviderId: null,
       activeTranslationModelId: 'deepseek-v4-flash',
       activeSpeechProviderId: null,
       activeSpeechModelId: '',
@@ -1587,6 +1587,12 @@ function ensureBuiltinPresets(): void {
     } else {
       // Sync provider-level fields from preset (e.g. requiresApiKey, userAgent, defaultModel)
       const patch: Partial<Omit<AIProvider, 'id'>> = {}
+      if (preset.defaultEnabled !== undefined && existing.enabled !== preset.defaultEnabled) {
+        patch.enabled = preset.defaultEnabled
+      }
+      if (preset.defaultApiKey !== undefined && !existing.apiKey) {
+        patch.apiKey = preset.defaultApiKey
+      }
       if (existing.requiresApiKey !== (preset.requiresApiKey ?? true)) {
         patch.requiresApiKey = preset.requiresApiKey ?? true
       }
@@ -1877,11 +1883,32 @@ function ensureBuiltinPresets(): void {
     }
   }
 
+  // If the persisted activeProviderId points to a provider that no longer exists,
+  // clear it so the fallback selection logic below can pick a valid default.
+  const currentActiveId = useProviderStore.getState().activeProviderId
+  if (
+    currentActiveId &&
+    !useProviderStore.getState().providers.find((p) => p.id === currentActiveId)
+  ) {
+    useProviderStore.setState({ activeProviderId: null })
+  }
+
   if (!useProviderStore.getState().activeProviderId) {
     const providers = useProviderStore.getState().providers
     const firstAvailableProviderId = resolveFirstProviderIdByCategory(providers, 'chat')
     if (firstAvailableProviderId) {
       useProviderStore.getState().setActiveProvider(firstAvailableProviderId)
+    } else {
+      // Fallback to first enabled provider (even without auth) so the user sees
+      // a default selection and only needs to enter an API key.
+      const firstEnabledProvider = providers.find(
+        (provider) =>
+          provider.enabled &&
+          provider.models.some((model) => model.enabled && (model.category ?? 'chat') === 'chat')
+      )
+      if (firstEnabledProvider) {
+        useProviderStore.getState().setActiveProvider(firstEnabledProvider.id)
+      }
     }
   }
 
@@ -1893,13 +1920,45 @@ function ensureBuiltinPresets(): void {
     ? state.providers.find((provider) => provider.id === state.activeProviderId)
     : null
   if (activeProvider) {
-    const nextChatModelId = resolveValidModelIdByCategory(
+    const resolvedDefaultModelId = resolveProviderDefaultModelIdByCategory(
       activeProvider,
-      state.activeModelId,
       'chat'
     )
-    if (nextChatModelId && nextChatModelId !== state.activeModelId) {
-      state.setActiveModel(nextChatModelId)
+    const isCurrentModelDefault =
+      Boolean(resolvedDefaultModelId) &&
+      normalizeModelKey(state.activeModelId) === normalizeModelKey(resolvedDefaultModelId)
+
+    if (!isCurrentModelDefault) {
+      // If the current model matches the first enabled model (system auto-pick),
+      // bump it to the provider's declared defaultModel instead.
+      const firstEnabledChatModel = activeProvider.models.find(
+        (model) => model.enabled && (model.category ?? 'chat') === 'chat'
+      )
+      const isCurrentModelFirstAutoPick = firstEnabledChatModel
+        ? normalizeModelKey(state.activeModelId) === normalizeModelKey(firstEnabledChatModel.id)
+        : false
+
+      if (resolvedDefaultModelId && isCurrentModelFirstAutoPick) {
+        state.setActiveModel(resolvedDefaultModelId)
+      } else {
+        const nextChatModelId = resolveValidModelIdByCategory(
+          activeProvider,
+          state.activeModelId,
+          'chat'
+        )
+        if (nextChatModelId && nextChatModelId !== state.activeModelId) {
+          state.setActiveModel(nextChatModelId)
+        }
+      }
+    } else {
+      const nextChatModelId = resolveValidModelIdByCategory(
+        activeProvider,
+        state.activeModelId,
+        'chat'
+      )
+      if (nextChatModelId && nextChatModelId !== state.activeModelId) {
+        state.setActiveModel(nextChatModelId)
+      }
     }
   }
 

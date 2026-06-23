@@ -136,8 +136,7 @@ async function exchangeCodeForToken(code: string): Promise<TokenResponseJson> {
     grant_type: 'authorization_code',
     code,
     redirect_uri: CUSTOM_CALLBACK_PREFIX,
-    client_id,
-    scope: 'openid profile'
+    client_id
   })
 
   return postToTokenEndpoint(params)
