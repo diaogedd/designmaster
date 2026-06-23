@@ -4,7 +4,7 @@ import packageJson from '../../../../../package.json'
 import { useTranslation } from 'react-i18next'
 import {
   BookOpen,
-  CalendarDays,
+  // CalendarDays,
   ChevronDown,
   ChevronRight,
   CloudSync,

@@ -1,5 +1,5 @@
 provider: github
 owner: AIDotNet
-repo: OpenCowork
+repo: DesignMaster
 releaseType: release
-updaterCacheDirName: open-cowork-updater
+updaterCacheDirName: designmaster-updater

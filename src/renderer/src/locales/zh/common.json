@@ -231,6 +231,7 @@
     "success": "登录成功",
     "callbackFailed": "登录失败",
     "waiting": "等待登录中...",
+    "retryButton": "重新登录",
     "hint": "点击登录后，在浏览器中完成认证。token 将通过本地安全回调接收，不会明文传输。"
   },
   "app": {

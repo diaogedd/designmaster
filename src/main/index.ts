@@ -1048,9 +1048,9 @@ configureRendererHeapLimit()
 
 // 防止dev环境和生产环境冲突，导致无法启动
 if (!app.isPackaged) {
-  app.setName('OpenCoWork-dev')
+  app.setName('DesignMaster-dev')
 } else {
-  app.setName('OpenCoWork')
+  app.setName('DesignMaster')
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock()

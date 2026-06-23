@@ -3,10 +3,11 @@
   "version": "0.9.118",
   "description": "Open-source desktop platform for multi-agent AI collaboration with local tools and workplace integration",
   "main": "./out/main/index.js",
-  "author": "example.com",
+  "author": "AIDotNet",
   "homepage": "https://electron-vite.org",
   "scripts": {
     "predev": "node ./scripts/predev.mjs",
+    "prestart": "node ./scripts/predev.mjs",
     "format": "prettier --write .",
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

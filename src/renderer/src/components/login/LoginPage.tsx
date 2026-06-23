@@ -10,6 +10,8 @@ interface LoginCallbackPayload {
   requestId: string
   success: boolean
   code?: string
+  accessToken?: string
+  expiresAt?: number
   error?: string
 }
 
@@ -29,7 +31,7 @@ export function LoginPage(): React.JSX.Element {
         setLoading(false)
         toast.success(
           t('login.success', {
-            defaultValue: payload.code ? 'Login code received' : 'Login successful'
+            defaultValue: payload.accessToken ? 'Login successful' : 'Login code received'
           })
         )
       } else {
@@ -43,7 +45,7 @@ export function LoginPage(): React.JSX.Element {
     }
   }, [setLogin, t])
 
-  const handleLogin = async (): Promise<void> => {
+  const startLogin = async (): Promise<void> => {
     setLoading(true)
     try {
       const result = (await ipcClient.invoke('login:start')) as {
@@ -58,6 +60,19 @@ export function LoginPage(): React.JSX.Element {
     }
   }
 
+  const handleRetryLogin = async (): Promise<void> => {
+    const requestId = currentRequestIdRef.current
+    if (requestId) {
+      try {
+        await ipcClient.invoke('login:stop', { requestId })
+      } catch {
+        // Ignore stop errors and start a fresh login attempt.
+      }
+      currentRequestIdRef.current = null
+    }
+    await startLogin()
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-sm space-y-6 px-6 text-center">
@@ -70,12 +85,30 @@ export function LoginPage(): React.JSX.Element {
           </p>
         </div>
 
-        <Button className="w-full" size="lg" onClick={() => void handleLogin()} disabled={loading}>
-          {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
-          {loading
-            ? t('login.waiting', { defaultValue: 'Waiting for login...' })
-            : t('login.loginButton', { defaultValue: '登录' })}
-        </Button>
+        <div className="space-y-3">
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={() => void startLogin()}
+            disabled={loading}
+          >
+            {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {loading
+              ? t('login.waiting', { defaultValue: 'Waiting for login...' })
+              : t('login.loginButton', { defaultValue: '登录' })}
+          </Button>
+
+          {loading && (
+            <Button
+              className="w-full"
+              size="lg"
+              variant="outline"
+              onClick={() => void handleRetryLogin()}
+            >
+              {t('login.retryButton', { defaultValue: '重新登录' })}
+            </Button>
+          )}
+        </div>
 
         <p className="text-xs text-muted-foreground">
           {t('login.hint', {

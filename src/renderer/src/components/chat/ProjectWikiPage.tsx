@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   BookOpen,
   Bot,
@@ -104,6 +105,7 @@ function parseSourceFiles(raw: string): string[] {
 }
 
 export function ProjectWikiPage(): React.JSX.Element {
+  const { t } = useTranslation(['chat', 'common'])
   const activeProjectId = useChatStore((state) => state.activeProjectId)
   const projects = useChatStore((state) => state.projects)
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null

@@ -231,6 +231,7 @@
     "success": "Login successful",
     "callbackFailed": "Login failed",
     "waiting": "Waiting for login...",
+    "retryButton": "Retry login",
     "hint": "After clicking login, complete authentication in the browser. The token will be received securely and never transmitted in plaintext."
   },
   "app": {

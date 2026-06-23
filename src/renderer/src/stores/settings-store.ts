@@ -14,7 +14,7 @@ import {
   clampLeftSidebarWidth
 } from '@renderer/components/layout/right-panel-defs'
 import {
-  DEFAULT_BROWSER_USER_DATA_SOURCE,
+  // DEFAULT_BROWSER_USER_DATA_SOURCE,
   normalizeBrowserUserDataSource,
   type BrowserUserDataSource
 } from '../../../shared/browser-plugin'
