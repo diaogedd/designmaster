@@ -646,6 +646,9 @@ class AnthropicProvider implements APIProvider {
       : new Set<string>()
 
     return filteredMessages.map((m, messageIndex) => {
+      if (m.content == null) {
+        return { role: m.role, content: '' }
+      }
       if (typeof m.content === 'string') {
         if (!cacheTargets.has(`message:${messageIndex}`)) {
           return { role: m.role, content: m.content }

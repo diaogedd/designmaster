@@ -724,7 +724,7 @@ function GeneralPanel(): React.JSX.Element {
         <p className="text-sm text-muted-foreground">{t('general.subtitle')}</p>
       </div>
 
-      <section className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+      {/* <section className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
         <div className="flex flex-col gap-1 text-sm">
           <span className="font-medium">{t('general.update.status')}</span>
           <span className="text-xs text-muted-foreground">
@@ -796,7 +796,7 @@ function GeneralPanel(): React.JSX.Element {
             {t('general.update.downloadedRestarting', { version: downloadedVersion })}
           </p>
         )}
-      </section>
+      </section> */}
 
       <GlobalThemePanel />
 

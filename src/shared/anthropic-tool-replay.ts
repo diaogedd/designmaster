@@ -149,6 +149,12 @@ export function normalizeMessagesForAnthropicToolReplay<
   for (let index = 0; index < messages.length; ) {
     const message = messages[index]
 
+    // Normalize null/undefined content to empty string so it doesn't
+    // produce invalid "content":null in the serialized request body.
+    if ((message.content as unknown) == null) {
+      message.content = '' as unknown as TBlock[]
+    }
+
     if (
       message.role !== 'assistant' ||
       !hasArrayContent<TBlock>(message.content) ||
